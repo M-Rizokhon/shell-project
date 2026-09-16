@@ -1,3 +1,3 @@
-A small shell project written in C. 
-Still being developed and new features are on the way
-though it's still usable. 
+# Minimal Shell
+
+A small shell written in C. Usable now and under active development, with more features planned.
