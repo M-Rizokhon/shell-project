@@ -18,12 +18,16 @@ builtin_t builtins[] = {
     {"help", "Show this help message"},
 };
 
+enum Proc_kind {BACKGROUND, FOREGROUND};
 
 int main(void) {
     char line[MAX_LINE];
     char *args[MAX_ARGS];
 
     while (1) {
+        while (waitpid(-1, NULL, WNOHANG) > 0) {
+        }
+
         printf("myshell> ");
         fflush(stdout);
 
@@ -103,6 +107,17 @@ int main(void) {
             break;
         }
 
+        enum Proc_kind proc = FOREGROUND;
+        if (strcmp(args[i-1], "&") == 0) {
+            proc = BACKGROUND;
+            args[i-1] = NULL;
+            i--;
+        }
+
+        if (args[0] == NULL) {
+            continue;
+        }
+
         pid_t pid = fork();
 
         if (pid < 0) {
@@ -116,7 +131,11 @@ int main(void) {
             perror("execvp");
             exit(1);
         } else {
-            waitpid(pid, NULL, 0);
+            if (proc == FOREGROUND)
+                waitpid(pid, NULL, 0);
+            else {
+                printf("%d\n", pid);
+            }
         }
     }
 
