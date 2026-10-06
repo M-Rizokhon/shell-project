@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <fcntl.h>
 
 #define MAX_LINE 1024
 #define MAX_ARGS 64
@@ -19,6 +20,74 @@ builtin_t builtins[] = {
 };
 
 enum Proc_kind {BACKGROUND, FOREGROUND};
+
+
+
+static int is_redir_op(const char* s) {
+    return strcmp(s, ">") == 0 || strcmp(s, ">>") == 0 || strcmp(s, "<") == 0;
+}
+
+
+// Applies every > and >> in args, removing the operator and filename
+// tokens so only the command and its real arguments remain.
+// Returns 0 on success, -1 on error (message already printed).
+static int apply_redirections(char **args) {
+    int w = 0;
+
+    for (int r = 0; args[r] != NULL; r++) {
+
+
+        if (!is_redir_op(args[r])) {
+            args[w++] = args[r];
+            continue;
+        }
+
+        if (args[r + 1] == NULL) {
+            fprintf(stderr, "syntax error: filename expected after %s\n", args[r]);
+            return -1;
+        }
+
+        if (is_redir_op(args[r + 1])) {
+            fprintf(stderr, "syntax error near unexpected token '%s'\n", args[r + 1]);
+            return -1;
+        }
+
+        int is_append = strcmp(args[r], ">>") == 0;
+        int is_in = strcmp(args[r], "<") == 0;
+
+        int flags = is_in ? O_RDONLY : O_WRONLY | O_CREAT | (is_append ? O_APPEND : O_TRUNC);
+        int target = is_in ? STDIN_FILENO : STDOUT_FILENO;
+
+        int fd = open(args[r + 1], flags, 0644);
+        if (fd == -1) {
+            perror(args[r + 1]);
+            return -1;
+        }
+
+        if (dup2(fd, target) == -1) {
+            perror("dup2");
+            close(fd);
+            return -1;
+        }
+        close(fd);
+
+        r++;  // skip the filename too
+    }
+
+    args[w] = NULL;
+    return 0;
+}   
+
+
+
+
+
+
+
+
+
+
+
 
 int main(void) {
     char line[MAX_LINE];
@@ -51,9 +120,6 @@ int main(void) {
             continue;
         }
 
-        if (strcmp(args[0], "man") == 0) {
-            continue;
-        }
 
         if (strcmp(args[0], "help") == 0) {
             size_t builtin_count = sizeof(builtins) / sizeof(builtins[0]);
@@ -126,6 +192,15 @@ int main(void) {
         }
 
         if (pid == 0) {
+            if (apply_redirections(args) == -1) {
+                exit(1);
+            }
+
+            if (args[0] == NULL) {
+                fprintf(stderr, "syntax error: missing command\n");
+                exit(1);
+            }
+
             execvp(args[0], args);
 
             perror("execvp");
