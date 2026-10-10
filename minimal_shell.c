@@ -79,11 +79,16 @@ static int apply_redirections(char **args) {
 }   
 
 
-
-
-
-
-
+static void exec_cmd(char **argv) {
+    if (apply_redirections(argv) == -1) _exit(1);
+    if (argv[0] == NULL) {
+        fprintf(stderr, "syntax error: missing command\n");
+        _exit(1);
+    }
+    execvp(argv[0], argv);
+    perror(argv[0]);
+    _exit(127);
+}
 
 
 
@@ -183,6 +188,69 @@ int main(void) {
         if (args[0] == NULL) {
             continue;
         }
+
+        int j = 0;
+        int is_pipe = 0;
+        while (args[j] != NULL) {
+            if (strcmp(args[j], "|") == 0) {
+                is_pipe = 1;
+                break;
+            }
+            j++;
+        }
+
+        if (is_pipe) {
+
+            char* left_argv[i], *right_argv[i];
+            int k = 0;
+            while (strcmp(args[k], "|") != 0) {
+                left_argv[k] = args[k];
+                k++;
+            }
+            left_argv[k] = NULL;
+            k++;
+
+            int m = 0;
+            while (args[k] != NULL) {
+                right_argv[m++] = args[k++];
+            }
+            right_argv[m] = NULL;
+
+            if (left_argv[0] == NULL || right_argv[0] == NULL) {
+                fprintf(stderr, "syntax error near '|'\n");
+                continue;
+            }
+
+            
+            int pfd[2];
+            if (pipe(pfd) == -1) {
+                perror("pipe");
+                continue;
+            }
+
+            pid_t left = fork();
+            if (left == 0) {
+                dup2(pfd[1], STDOUT_FILENO);
+                close(pfd[0]);
+                close(pfd[1]);
+                exec_cmd(left_argv);
+            }
+            
+            pid_t right = fork();
+            if (right == 0) {
+                dup2(pfd[0], STDIN_FILENO);
+                close(pfd[1]);
+                close(pfd[0]);
+                exec_cmd(right_argv);
+            }
+
+            close(pfd[0]);
+            close(pfd[1]);
+            waitpid(left, NULL, 0);
+            waitpid(right, NULL, 0);
+            continue;
+        }
+
 
         pid_t pid = fork();
 
